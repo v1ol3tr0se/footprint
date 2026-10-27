@@ -43,7 +43,7 @@ test("html takes an optional path in every spelling", async () => {
 test("interactive asks for what is missing", async () => {
 	const answers = ["@eve bob", "me@x.com", "s", ""];
 	using _out = capture();
-	const a = await parseArgs(["-i"], async (_label, fallback = "") => answers.shift() || fallback);
+	const a = await parseArgs(["-i"], async () => answers.shift() ?? "");
 	assert.deepEqual(a.user, ["eve", "bob"]);
 	assert.deepEqual(a.email, ["me@x.com"]);
 	assert.equal(a.html, true);
