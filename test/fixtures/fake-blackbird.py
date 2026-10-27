@@ -57,7 +57,15 @@ for u in users:
 mail = pathlib.Path("data/email-data.json")
 mailed = {s["name"] for s in json.loads(mail.read_text())["sites"]} if mail.exists() else set()
 for e in emails:
-    if "Gravatar" in mailed:
-        status(404 if slow else 429, f"https://gravatar.example/{hashlib.sha256(e.encode()).hexdigest()}.json")
+    probe = f"https://gravatar.example/{hashlib.sha256(e.encode()).hexdigest()}.json"
+    if "Gravatar" in mailed and not e.startswith("found"):
+        status(404 if slow else 429, probe)
+    if e.startswith("found"):
+        print(f"  ✔️  [Gravatar] {probe}")
     print("🏁 Check completed in 1 seconds (1 sites)")
+    if e.startswith("found"):
+        d = home / "results" / f"{e}_{stamp}_blackbird"
+        d.mkdir(parents=True, exist_ok=True)
+        hits = [{"name": "Gravatar", "url": probe, "category": "social", "status": "FOUND", "metadata": None}]
+        (d / f"{d.name}.json").write_text(json.dumps(hits))
 sys.exit(int("fail" in users))

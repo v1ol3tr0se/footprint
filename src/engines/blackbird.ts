@@ -44,6 +44,15 @@ export function parseBlackbird(path: string, links?: Map<string, string>): Hit[]
 	});
 }
 
+const SECOND_LEVEL = new Set(["com", "co", "net", "org", "gov", "edu", "ac", "ne", "or"]);
+
+/** A site's front page from its probe url, so spclient.wg.spotify.com becomes https://spotify.com; a two-letter tld under a generic second level keeps three labels, like olx.com.br. */
+export function homepage(url: string) {
+	const host = new URL(url).hostname.split(".");
+	const keep = host.at(-1)?.length === 2 && SECOND_LEVEL.has(host.at(-2) ?? "") ? 3 : 2;
+	return `https://${host.slice(-keep).join(".")}`;
+}
+
 function stamp() {
 	const d = new Date();
 	return `${String(d.getMonth() + 1).padStart(2, "0")}_${String(d.getDate()).padStart(2, "0")}_${d.getFullYear()}`;
@@ -102,6 +111,11 @@ export async function runBlackbird(
 	const pretty = new Map(wmn.sites.flatMap((s): [string, string][] => (s.uri_pretty ? [[s.name, s.uri_pretty]] : [])));
 	const links = new Map(
 		users.map((u) => [u, new Map([...pretty].map(([n, p]) => [n, p.replaceAll("{account}", () => u)]))]),
+	);
+	const homes = new Map(
+		mail.sites.flatMap((s): [string, string][] =>
+			s.uri_check && URL.canParse(s.uri_check) ? [[s.name, homepage(s.uri_check)]] : [],
+		),
 	);
 	const checks = new Map<string, Check>();
 	const expect = (t: string, s: Site, account: string) => {
@@ -192,7 +206,9 @@ export async function runBlackbird(
 				.find((f) => isFile(f) && statSync(f).mtimeMs >= t0);
 			const have = found.get(t) ?? [];
 			const names = new Set(have.map((h) => h.site));
-			if (f) found.set(t, [...have, ...parseBlackbird(f, links.get(t)).filter((h) => !names.has(h.site))]);
+			const parsed = f ? parseBlackbird(f, links.get(t)) : [];
+			if (!links.has(t)) for (const h of parsed) h.url = homes.get(h.site) ?? "";
+			if (f) found.set(t, [...have, ...parsed.filter((h) => !names.has(h.site))]);
 			else if (!problem) found.set(t, have);
 		}
 		if (problem && pass) break;

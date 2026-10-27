@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { parseBlackbird, runBlackbird } from "../src/engines/blackbird.ts";
+import { homepage, parseBlackbird, runBlackbird } from "../src/engines/blackbird.ts";
 import { parseHolehe } from "../src/engines/holehe.ts";
 import { parseMaigret, runMaigret } from "../src/engines/maigret.ts";
 import { run, STOP, which } from "../src/engines/process.ts";
@@ -269,6 +269,21 @@ test("blackbird asks again about email checks that got rate-limited", async () =
 		asked.map((s: { name: string }) => s.name),
 		["Gravatar"],
 	);
+});
+
+test("blackbird email hits link the site's front page, never the probe", async () => {
+	using tmp = tempDir();
+	const home = fakeBlackbird(tmp.path);
+	using _out = capture();
+	const [found] = await runBlackbird([], ["found@x.example"], home, false, tmp.path);
+	assert.deepEqual(
+		found.get("found@x.example")?.map((h) => [h.site, h.url]),
+		[["Gravatar", "https://gravatar.example"]],
+	);
+	assert.equal(homepage("https://spclient.wg.spotify.com/signup?email={account}"), "https://spotify.com");
+	assert.equal(homepage("https://apigw.olx.com.br/v0/user"), "https://olx.com.br");
+	assert.equal(homepage("https://www.notion.so/api"), "https://notion.so");
+	assert.equal(homepage("https://api.ok.ru/fb.do"), "https://ok.ru");
 });
 
 test("a sherlock retry that hangs on its first site still asks the rest again", async () => {
