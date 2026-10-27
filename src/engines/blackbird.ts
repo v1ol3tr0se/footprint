@@ -100,6 +100,9 @@ export async function runBlackbird(
 	const wmn = readList(join(data, "wmn-data.json"));
 	const mail = readList(join(data, "email-data.json"));
 	const pretty = new Map(wmn.sites.flatMap((s): [string, string][] => (s.uri_pretty ? [[s.name, s.uri_pretty]] : [])));
+	const links = new Map(
+		users.map((u) => [u, new Map([...pretty].map(([n, p]) => [n, p.replaceAll("{account}", () => u)]))]),
+	);
 	const checks = new Map<string, Check>();
 	const expect = (t: string, s: Site, account: string) => {
 		if (!s.uri_check) return;
@@ -126,13 +129,10 @@ export async function runBlackbird(
 		if (i >= order.length) return;
 		const t = order[i];
 		const m = FOUND.exec(ln);
-		if (m) live(t, m[1], i >= nUsers ? "" : (pretty.get(m[1]) ?? "").replaceAll("{account}", () => t) || m[2]);
+		if (m) live(t, m[1], i >= nUsers ? "" : links.get(t)?.get(m[1]) || m[2]);
 		else if (ln.includes("Check completed in")) i++;
 	};
 
-	const links = new Map(
-		users.map((u) => [u, new Map([...pretty].map(([n, p]) => [n, p.replaceAll("{account}", () => u)]))]),
-	);
 	const found: Found = new Map();
 	const notes: string[] = [];
 	let failing = new Set<string>();
