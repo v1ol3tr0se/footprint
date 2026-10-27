@@ -32,7 +32,7 @@ aggregate osint tools into one self-audit report
 
   -u, --user USER ...     usernames to check, {?} tries _ - and . in that spot
   -e, --email EMAIL ...   emails to check
-  -n, --name NAME         title for the html report (default the report's name)
+  -n, --name NAME         tab title for the html report (default the report's name)
   --html, -html [PATH]    also write the html report (default reports/<most found username>.html)
   --blackbird-home DIR    blackbird clone to run, it writes into its own results/
   --no-nsfw               leave nsfw sites out

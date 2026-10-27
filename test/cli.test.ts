@@ -61,14 +61,14 @@ test("failed tools say not checked and exit nonzero", async () => {
 	const home = fakeBlackbird(tmp.path);
 	const out = join(tmp.path, "r.html");
 	using _path = path(tmp.path, { replace: true });
-	using _out = capture();
+	using said = capture();
 	const code = await main(["-u", "fail", "--html", out, "--blackbird-home", home]);
 	const page = readFileSync(out, "utf8");
 	assert.equal(code, 1);
 	assert.equal(statSync(out).mode & 0o777, 0o600);
-	assert.match(page, /maigret isn&#x27;t on PATH/);
-	assert.match(page, /sherlock isn&#x27;t on PATH/);
-	assert.match(page, /blackbird exited with 1/);
+	assert.match(said.err(), /maigret isn't on PATH/);
+	assert.match(said.err(), /sherlock isn't on PATH/);
+	assert.match(said.err(), /blackbird exited with 1/);
 	assert.match(page, /Not checked/);
 });
 

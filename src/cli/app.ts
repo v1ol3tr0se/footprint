@@ -7,7 +7,7 @@ import { NSFW } from "../core/risk.ts";
 import type { Found, Kind, Section } from "../core/types.ts";
 import { ENGINES, type Outcome, type Scan } from "../engines/index.ts";
 import { STOP, strerror } from "../engines/process.ts";
-import { fileName, render, reportName } from "../output/html.ts";
+import { fileName, photos, render, reportName } from "../output/html.ts";
 import { BANNER, paint, say, show, summary } from "../output/terminal.ts";
 import { type Args, Exit, parseArgs } from "./args.ts";
 import type { Ask } from "./prompt.ts";
@@ -135,7 +135,10 @@ export async function main(argv: string[], ask?: Ask): Promise<number> {
 		const name = reportName(sections);
 		const out = args.htmlPath ?? join(REPORTS, fileName(name));
 		if (!args.htmlPath) claimOutput(out);
-		render(args.name ?? name, sections, notes, out);
+		const pics = await photos(sections, (n) =>
+			show(paint("2", `fetching ${n} profile ${n === 1 ? "photo" : "photos"}`)),
+		);
+		render(args.name ?? name, sections, out, pics);
 		show(`wrote ${out}`);
 	}
 	return missed ? 1 : 0;

@@ -4,8 +4,8 @@
  *
  * give it your own usernames and emails. it runs whichever of maigret, sherlock, blackbird
  * and holehe it can find, side by side, merges what they find, ranks each hit by
- * how much it exposes you, and writes a single themed html report that also says
- * what couldn't be checked. meant for auditing your own exposure, not profiling
+ * how much it exposes you, and writes a single themed html report that marks a
+ * target no tool could check. meant for auditing your own exposure, not profiling
  * anyone else.
  */
 import { main } from "./cli/app.ts";
