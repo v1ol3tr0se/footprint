@@ -308,7 +308,7 @@ test("a double-check that hangs on one site sets that site aside and checks the 
 
 test("a tool that ignores the stop gets killed shortly after", async () => {
 	try {
-		const running = run("sh", ["sh", "-c", "trap '' INT TERM; sleep 30"]);
+		const running = run("sh", ["sh", "-c", "trap '' INT TERM; sleep 30; :"]);
 		setTimeout(STOP.set, 100);
 		const t0 = performance.now();
 		const [, problem] = await running;

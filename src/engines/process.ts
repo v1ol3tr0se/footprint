@@ -9,6 +9,7 @@ import { cut } from "../core/text.ts";
 
 let stopper = new AbortController();
 const GRACE_MS = 5000;
+const PIPE_DRAIN_MS = 500;
 
 /** Set when ctrl-c lands or a tool dies from a signal, so nothing new starts and retries give up. */
 export const STOP = {
@@ -67,6 +68,12 @@ export async function run(
 	} catch (e) {
 		return ["", `${tool} didn't start: ${strerror(e)}`];
 	}
+	p.once("exit", () => {
+		setTimeout(() => {
+			p.stdout?.destroy();
+			p.stderr?.destroy();
+		}, PIPE_DRAIN_MS).unref();
+	});
 	const ended = new Promise<End>((resolve) => {
 		p.once("error", (error) => resolve({ error }));
 		p.once("close", (code, signal) => resolve({ code: signal ? -constants.signals[signal] : (code ?? 0) }));
