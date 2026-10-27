@@ -30,7 +30,7 @@ export const HELP = `${USAGE}
 
 aggregate osint tools into one self-audit report
 
-  -u, --user USER ...     usernames to check
+  -u, --user USER ...     usernames to check, {?} tries _ - and . in that spot
   -e, --email EMAIL ...   emails to check
   -n, --name NAME         title for the html report (default the report's name)
   --html, -html [PATH]    also write the html report (default reports/<most found username>.html)
@@ -143,7 +143,11 @@ async function interview(a: Args, ask: Ask) {
 export async function parseArgs(argv: string[], ask: Ask = askStdin): Promise<Args> {
 	const a = read(argv);
 	if (a.interactive) await interview(a, ask);
-	a.user = unique(a.user.map((u) => u.trim().replace(/^@+/, "")));
+	a.user = unique(
+		a.user
+			.map((u) => u.trim().replace(/^@+/, ""))
+			.flatMap((u) => (u.includes("{?}") ? ["_", "-", "."].map((c) => u.replaceAll("{?}", c)) : [u])),
+	);
 	a.email = unique(a.email.map((e) => e.trim()));
 	a.htmlPath = a.htmlPath ? tidy(a.htmlPath) : null;
 	if (!a.user.length && !a.email.length) fail("give at least one --user or --email");

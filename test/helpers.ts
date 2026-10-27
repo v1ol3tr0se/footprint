@@ -58,7 +58,29 @@ export function fakeBlackbird(dir: string) {
 	mkdirSync(join(dir, ".venv/bin"), { recursive: true });
 	symlinkSync(PYTHON, join(dir, ".venv/bin/python"));
 	mkdirSync(join(dir, "data"));
-	const sites = [{ name: "GitHub (User)", uri_pretty: "https://github.com/{account}" }];
+	const sites = [
+		{
+			name: "GitHub (User)",
+			uri_check: "https://api.github.com/users/{account}",
+			uri_pretty: "https://github.com/{account}",
+			e_code: 200,
+			m_code: 404,
+		},
+		{ name: "Down", uri_check: "https://down.example/{account}", e_code: 200, m_code: 404 },
+		{ name: "Walled", uri_check: "https://walled.example/{account}", e_code: 200, m_code: 404 },
+		{ name: "Limited", uri_check: "https://limited.example/{account}", e_code: 200, m_code: 404 },
+		{ name: "Moved", uri_check: "https://moved.example/{account}", e_code: 200, m_code: 302 },
+	];
 	writeFileSync(join(dir, "data/wmn-data.json"), JSON.stringify({ sites }));
+	const mail = [
+		{
+			name: "Gravatar",
+			uri_check: "https://gravatar.example/{account}.json",
+			e_code: 200,
+			m_code: 404,
+			input_operation: "hash-sha256",
+		},
+	];
+	writeFileSync(join(dir, "data/email-data.json"), JSON.stringify({ sites: mail }));
 	return dir;
 }

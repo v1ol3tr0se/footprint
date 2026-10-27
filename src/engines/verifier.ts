@@ -42,23 +42,25 @@ class Queue<T> {
 
 const FOUND = /^\[\+\] (.+?): https?:\/\//gim;
 const GONE = /^\[-\] (.+?): Not found!/gim;
+const LINE = /^\[[+-]\] (.+?): /gm;
 const BLOCK = /Checking username (.+?) on:(.*?)(?=\[\*\] Checking username |$)/gs;
 const BATCH_MS = 3000;
 const RETRY_MS = 3000;
 const IDLE_S = 120;
+const LIMIT_S = 240;
 const TRIES = 3;
 
 const pick = (from: string) => from[randomInt(from.length)];
 const LOWER = "abcdefghijklmnopqrstuvwxyz";
 const UPPER = LOWER.toUpperCase();
+const DIGITS = "123456789";
 
-/** A made-up name with the real one's shape (letters, digits and separators in the same places) so sites with a username format accept it; short names get 12 plain letters instead, a random 3-letter name is probably taken. */
+/** A made-up name with the real one's shape (letters, digits and separators in the same places, no 0 since some sites refuse it) so sites with a username format accept it; short names get 12 plain letters, or 12 digits if they're all digits, a random 3-letter name is probably taken. */
 export function fake(like: string) {
+	if (/^[0-9]+$/.test(like) && like.length < 8) return Array.from({ length: 12 }, () => pick(DIGITS)).join("");
 	if ([...like].length < 8 || !/[a-z0-9]/i.test(like)) return Array.from({ length: 12 }, () => pick(LOWER)).join("");
 	return [...like]
-		.map((c) =>
-			/[a-z]/.test(c) ? pick(LOWER) : /[A-Z]/.test(c) ? pick(UPPER) : /[0-9]/.test(c) ? pick("0123456789") : c,
-		)
+		.map((c) => (/[a-z]/.test(c) ? pick(LOWER) : /[A-Z]/.test(c) ? pick(UPPER) : /[0-9]/.test(c) ? pick(DIGITS) : c))
 		.join("");
 }
 
@@ -73,19 +75,21 @@ export class Verifier {
 	private readonly queue = new Queue<Claim | null>();
 	private readonly ok = new Map<string, Set<string>>();
 	private readonly seen = new Set<string>();
-	private readonly bad = new Set<string>();
-	private readonly flaky = new Set<string>();
-	private readonly unchecked = new Set<string>();
+	private readonly bad = new Map<string, Set<string>>();
+	private readonly flaky = new Map<string, Set<string>>();
+	private readonly unchecked = new Map<string, Set<string>>();
 	private readonly tool: string;
 	private readonly argv: string[];
 	private readonly listing: string;
 	private readonly tmp: string;
 	private readonly names: Set<string>;
+	private readonly idle: number;
 	private rounds = 0;
 	private loop: Promise<void> | undefined;
 	private finished: Promise<void> | undefined;
 
-	constructor(tool: string, argv: string[], listing: string, tmp: string, names: Set<string>) {
+	constructor(tool: string, argv: string[], listing: string, tmp: string, names: Set<string>, idle = IDLE_S) {
+		this.idle = idle;
 		this.tool = tool;
 		this.argv = argv;
 		this.listing = listing;
@@ -127,20 +131,31 @@ export class Verifier {
 	notes() {
 		const out: string[] = [];
 		const list = (s: Set<string>) => [...s].sort(cmp).join(", ");
-		if (this.bad.size) {
-			out.push(`${this.tool}: left out ${this.bad.size} sites that also 'found' a made-up name: ${list(this.bad)}`);
-		}
-		if (this.flaky.size) {
-			out.push(
-				`${this.tool}: left out ${this.flaky.size} sites that failed or changed their answer when asked again: ${list(this.flaky)}`,
-			);
-		}
-		if (this.unchecked.size) {
-			out.push(
-				`${this.tool}: couldn't double-check ${this.unchecked.size} sites, so they're left out: ${list(this.unchecked)}`,
-			);
+		for (const u of new Set([...this.bad.keys(), ...this.flaky.keys(), ...this.unchecked.keys()])) {
+			const [bad, flaky, unchecked] = [this.bad, this.flaky, this.unchecked].map((m) => m.get(u));
+			const at = `${this.tool} · ${u}`;
+			if (bad) out.push(`${at}: left out ${bad.size} sites that also 'found' a made-up name: ${list(bad)}`);
+			if (flaky) {
+				out.push(
+					`${at}: left out ${flaky.size} sites that failed or changed their answer when asked again: ${list(flaky)}`,
+				);
+			}
+			if (unchecked)
+				out.push(`${at}: couldn't double-check ${unchecked.size} sites, so they're left out: ${list(unchecked)}`);
 		}
 		return out;
+	}
+
+	private mark(into: Map<string, Set<string>>, user: string, site: string) {
+		into.set(user, (into.get(user) ?? new Set()).add(site));
+	}
+
+	/** sherlock prints sites in the order it was given them, so in the block that got cut off the first site with no line is the one it hung on. */
+	private stuck(blocks: Map<string, string>, names: string[], sites: string[]) {
+		const last = names.findLast((n) => blocks.has(n));
+		if (this.tool !== "sherlock" || last === undefined) return undefined;
+		const printed = new Set([...(blocks.get(last) ?? "").matchAll(LINE)].map((m) => siteName(m[1], this.names)));
+		return sites.find((s) => !printed.has(s));
 	}
 
 	private async drain() {
@@ -156,7 +171,7 @@ export class Verifier {
 				try {
 					await this.check(user, mine);
 				} catch {
-					for (const b of mine) this.unchecked.add(b[1]);
+					for (const b of mine) this.mark(this.unchecked, user, b[1]);
 				}
 			}
 			if (batch.at(-1) === null) return;
@@ -183,11 +198,17 @@ export class Verifier {
 		const sites = [...new Set(items.map((b) => b[1]))].sort(cmp);
 		const fakes = this.fakes(user);
 		const argv = [...this.argv, this.listing, ...sites.flatMap((s) => ["--site", s]), "-fo", out, "--", user, ...fakes];
-		const [text, problem] = await run(this.tool, argv, { idle: IDLE_S, cwd: this.tmp });
+		const [text, problem] = await run(this.tool, argv, { idle: this.idle, limit: LIMIT_S, cwd: this.tmp });
 		const blocks = new Map([...text.matchAll(BLOCK)].map((m) => [m[1], m[2]]));
 		if (problem || ![user, ...fakes].every((n) => blocks.has(n))) {
+			const stuck = problem?.includes("went quiet") ? this.stuck(blocks, [user, ...fakes], sites) : undefined;
+			if (stuck) {
+				this.mark(this.unchecked, user, stuck);
+				const rest = items.filter((b) => b[1] !== stuck);
+				return rest.length ? this.check(user, rest, tries) : undefined;
+			}
 			if (tries > 1 && !(await STOP.wait(RETRY_MS))) return this.check(user, items, tries - 1);
-			for (const s of sites) this.unchecked.add(s);
+			for (const s of sites) this.mark(this.unchecked, user, s);
 			return;
 		}
 		const listed = (name: string, re: RegExp) =>
@@ -196,7 +217,7 @@ export class Verifier {
 		const bad = new Set(fakes.flatMap((f) => [...listed(f, FOUND)]));
 		const gone = fakes.map((f) => listed(f, GONE));
 		const absent = new Set(sites.filter((s) => gone.every((g) => g.has(s))));
-		for (const s of sites) if (bad.has(s)) this.bad.add(s);
+		for (const s of sites) if (bad.has(s)) this.mark(this.bad, user, s);
 		const unsure = sites.filter((s) => !bad.has(s) && !(again.has(s) && absent.has(s)));
 		for (const [, site, shown, url] of items) {
 			if (!again.has(site) || !absent.has(site)) continue;
@@ -211,7 +232,7 @@ export class Verifier {
 				tries - 1,
 			);
 		} else {
-			for (const s of unsure) this.flaky.add(s);
+			for (const s of unsure) this.mark(this.flaky, user, s);
 		}
 	}
 }

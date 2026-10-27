@@ -8,6 +8,7 @@ import { getSystemErrorMessage } from "node:util";
 import { cut } from "../core/text.ts";
 
 let stopper = new AbortController();
+const GRACE_MS = 5000;
 
 /** Set when ctrl-c lands or a tool dies from a signal, so nothing new starts and retries give up. */
 export const STOP = {
@@ -46,11 +47,15 @@ export function which(cmd: string) {
 }
 
 export type Result = [out: string, problem: string | null];
-export type RunOptions = { onLine?: (line: string) => void; idle?: number; cwd?: string };
+export type RunOptions = { onLine?: (line: string) => void; idle?: number; limit?: number; cwd?: string };
 type End = { code: number } | { error: Error };
 
-/** Run one tool, handing each stdout line to onLine as it arrives; resolves to [stdout, problem or null]. It's only killed after `idle` seconds with no output. */
-export async function run(tool: string, argv: string[], { onLine, idle, cwd }: RunOptions = {}): Promise<Result> {
+/** Run one tool, handing each stdout line to onLine as it arrives; resolves to [stdout, problem or null]. It's only killed after `idle` seconds with no output or `limit` seconds in all, or a few seconds after the run is stopped if it hasn't quit on its own by then. */
+export async function run(
+	tool: string,
+	argv: string[],
+	{ onLine, idle, limit, cwd }: RunOptions = {},
+): Promise<Result> {
 	if (STOP.isSet()) return ["", `${tool} skipped, the run was stopped`];
 	let p: ReturnType<typeof spawn>;
 	try {
@@ -76,6 +81,19 @@ export async function run(tool: string, argv: string[], { onLine, idle, cwd }: R
 			killed = true;
 			p.kill("SIGKILL");
 		}, idle * 1000);
+	let late = false;
+	const cap =
+		limit &&
+		setTimeout(() => {
+			late = true;
+			p.kill("SIGKILL");
+		}, limit * 1000);
+	const stopped = stopper.signal;
+	let grace: NodeJS.Timeout | undefined;
+	const onStop = () => {
+		grace = setTimeout(() => p.kill("SIGKILL"), GRACE_MS);
+	};
+	stopped.addEventListener("abort", onStop, { once: true });
 	createInterface({ input: p.stdout as NodeJS.ReadableStream }).on("line", (ln) => {
 		if (timer) timer.refresh();
 		lines.push(ln);
@@ -88,9 +106,13 @@ export async function run(tool: string, argv: string[], { onLine, idle, cwd }: R
 	createInterface({ input: p.stderr as NodeJS.ReadableStream }).on("line", (ln) => err.push(ln));
 	const end = await ended;
 	clearTimeout(timer || undefined);
+	clearTimeout(grace);
+	clearTimeout(cap || undefined);
+	stopped.removeEventListener("abort", onStop);
 	if ("error" in end) return ["", `${tool} didn't start: ${strerror(end.error)}`];
 	if (failure) throw failure;
 	const out = lines.map((ln) => `${ln}\n`).join("");
+	if (late && end.code === -9 && !STOP.isSet()) return [out, `${tool} took over ${limit} s, stopped it`];
 	if (idle && killed && end.code === -9 && !STOP.isSet()) {
 		return [out, `${tool} went quiet for ${Math.floor(idle / 60)} min, stopped it, some sites weren't checked`];
 	}

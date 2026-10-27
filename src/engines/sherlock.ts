@@ -50,16 +50,18 @@ export async function runSherlock(users: string[], tmp: string, noNsfw: boolean,
 		...data,
 		...(noNsfw ? [] : ["--nsfw"]),
 	];
-	const check = new Verifier("sherlock", argv(60), "--print-all", tmp, new Set());
+	const check = new Verifier("sherlock", argv(60), "--print-all", tmp, new Set(), Math.min(idle, 120));
 	const found: Found = new Map();
 	const unanswered = new Map<string, Set<string>>();
 	const hung = new Set<string>();
 	let heard = new Set<string>();
+	let started = false;
 	let cur: string | undefined;
 
 	const onLine = (ln: string) => {
 		const checking = CHECKING.exec(ln);
 		if (checking) {
+			started = true;
 			cur = checking[1];
 			found.set(cur, found.get(cur) ?? []);
 			unanswered.set(cur, unanswered.get(cur) ?? new Set());
@@ -82,6 +84,7 @@ export async function runSherlock(users: string[], tmp: string, noNsfw: boolean,
 
 	const sherlock = async (u: string, asked: string[], args: string[]) => {
 		heard = new Set();
+		started = false;
 		const [, problem] = await run("sherlock", [...args, "--print-all", "-fo", outDir, "--", u], {
 			onLine,
 			idle,
@@ -92,7 +95,7 @@ export async function runSherlock(users: string[], tmp: string, noNsfw: boolean,
 			const sites = unanswered.get(u) ?? new Set();
 			unanswered.set(u, sites);
 			for (const s of missing) sites.add(s);
-			hung.add(missing[0]);
+			if (started) hung.add(missing[0]);
 		}
 		return problem ? `${problem} for ${u}` : null;
 	};
@@ -110,9 +113,10 @@ export async function runSherlock(users: string[], tmp: string, noNsfw: boolean,
 				const asked = [...sites].filter((s) => !hung.has(s));
 				if (!asked.length || STOP.isSet()) continue;
 				const before = sites.size;
+				const stuck = hung.size;
 				const problem = await sherlock(u, asked, [...argv(60), ...asked.flatMap((s) => ["--site", s])]);
 				if (problem) notes.push(problem);
-				progress ||= sites.size < before;
+				progress ||= sites.size < before || hung.size > stuck;
 			}
 		}
 	} finally {
@@ -126,6 +130,8 @@ export async function runSherlock(users: string[], tmp: string, noNsfw: boolean,
 		}
 	}
 	notes.push(...check.notes());
+	if (!all.length)
+		notes.push("sherlock: couldn't fetch its site list, so a run that stalls can't say which sites it missed");
 	return [new Map([...found].map(([u, hits]) => [u, hits.filter((h) => check.passed(u, h.site))])), notes];
 }
 

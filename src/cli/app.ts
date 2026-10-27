@@ -13,7 +13,7 @@ import { type Args, Exit, parseArgs } from "./args.ts";
 import type { Ask } from "./prompt.ts";
 
 const QUIET =
-	/% of sites failed|site checks failed|rate-limited or errored|sites didn't answer|sites blocked the check|made-up name|changed their answer|couldn't double-check/;
+	/rate-limited or errored|sites didn't answer|sites blocked the check|domain doesn't exist|made-up name|changed their answer|couldn't double-check/;
 
 export const REPORTS = join(import.meta.dirname, "../..", "reports");
 

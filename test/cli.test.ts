@@ -16,6 +16,7 @@ test("parse args extends, dedupes and validates", async () => {
 	const a = await parseArgs(["-u", "@eve", "-u", "Eve", "bob", "-e", "me@x.com", "ME@x.com"]);
 	assert.deepEqual(a.user, ["eve", "bob"]);
 	assert.deepEqual(a.email, ["me@x.com"]);
+	assert.deepEqual((await parseArgs(["-u", "eve{?}rose"])).user, ["eve_rose", "eve-rose", "eve.rose"]);
 	await assert.rejects(parseArgs(["-e", "nope"]), exits(2, /not an email: nope/));
 	await assert.rejects(parseArgs(["--user=-x"]), exits(2, /can't start with '-'/));
 	await assert.rejects(parseArgs([]), exits(2, /at least one/));
