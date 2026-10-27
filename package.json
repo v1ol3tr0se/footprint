@@ -1,0 +1,32 @@
+{
+	"name": "footprint",
+	"version": "2.0.0",
+	"description": "one self-audit report out of the osint tools you already run",
+	"private": true,
+	"type": "module",
+	"bin": {
+		"footprint": "dist/main.js"
+	},
+	"files": [
+		"dist"
+	],
+	"engines": {
+		"node": ">=24"
+	},
+	"scripts": {
+		"start": "node src/main.ts",
+		"build": "rm -rf dist && tsc -p tsconfig.build.json && chmod +x dist/main.js",
+		"prepare": "yarn build",
+		"typecheck": "tsc",
+		"lint": "biome check .",
+		"format": "biome check --write .",
+		"test": "node --test \"test/**/*.test.ts\"",
+		"verify": "yarn typecheck && yarn lint && yarn test"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.6.3",
+		"@types/node": "^26.6.5",
+		"typescript": "^7.0.2"
+	},
+	"packageManager": "yarn@1.22.22"
+}
