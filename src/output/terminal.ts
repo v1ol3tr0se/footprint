@@ -1,6 +1,6 @@
 import { canon, key } from "../core/hit.ts";
 import { intel } from "../core/intel.ts";
-import { cut, normUrl, pad, squash } from "../core/text.ts";
+import { cut, normUrl, pad, profile, squash } from "../core/text.ts";
 import type { Level, Section } from "../core/types.ts";
 
 const closed = new Set<NodeJS.WriteStream>();
@@ -45,9 +45,10 @@ export const show = (line: string) => io.out(`${line}\n`);
 
 export const say = (msg: string) => io.err(`footprint: ${msg}\n`);
 
-/** Print a hit as it's found, once per site even when several tools report it. */
+/** Print a hit as it's found, once per site even when several tools report it; hits with no profile link wait for the summary. */
 export function live(target: string, site: string, url = "") {
-	const [name, link] = canon(site, url, target);
+	const [name, link] = canon(site, profile(url, target), target);
+	if (!link) return;
 	const keys = [`${target}\0${key(name)}`, `${target}\0${normUrl(link) || name}`];
 	if (keys.some((k) => shown.has(k))) return;
 	for (const k of keys) shown.add(k);
@@ -70,7 +71,7 @@ export function summary(sections: Section[]) {
 		const width = Math.min(Math.max(...hits.map((h) => [...h.site].length)), 24);
 		for (const h of hits) {
 			const tag = paint(LEVEL_COLOR[h.level], pad(h.level.toUpperCase(), 6));
-			show(`  ${tag}  ${paint("1", pad(cut(h.site, 24), width))}  ${paint("36", h.url)}`.trimEnd());
+			show(`  ${tag}  ${paint("1", pad(cut(h.site, 24), width))}  ${paint("36", profile(h.url, title))}`.trimEnd());
 			const items = [...h.meta];
 			items.forEach(([k, v], i) => {
 				const branch = i === items.length - 1 ? "└─" : "├─";

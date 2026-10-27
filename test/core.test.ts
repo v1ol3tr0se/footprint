@@ -126,6 +126,17 @@ test("fandom wikis fold into one account", () => {
 	assert.match(out.out(), /FandomCommunityCentral {2}https:\/\/community\.fandom\.com\/wiki\/User:eve/);
 });
 
+test("live skips hits that only have a homepage or no link", () => {
+	using out = capture();
+	live("a@b.com", "adobe.com", "https://adobe.com");
+	live("a@b.com", "Twitter");
+	live("eve", "DeviantART", "https://eve.deviantart.com");
+	live("eve", "Replit.com", "https://replit.com/@eve");
+	live("eve", "Replit", "https://replit.com/@eve/");
+	assert.equal(out.out().split("✔").length - 1, 2);
+	assert.doesNotMatch(out.out(), /adobe|Twitter/);
+});
+
 test("intel pulls identity details together", () => {
 	const hits = [
 		hit("GitHub", "", "maigret", {

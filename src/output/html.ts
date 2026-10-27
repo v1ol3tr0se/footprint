@@ -1,6 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { LEVELS } from "../core/risk.ts";
-import { alnum, cut } from "../core/text.ts";
+import { alnum, cut, profile } from "../core/text.ts";
 import type { Level, Ranked, Section } from "../core/types.ts";
 
 const CSS = `:root{--bg:#faf8fc;--fg:#1d1a22;--mut:#6b6475;--card:#fff;--line:#e6e0ee;--hi:#c2185b;--mid:#a36100;--lo:#5b6b7a;--acc:#7b4bb7}
@@ -27,8 +27,8 @@ export const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ENTITIES[c]);
 
 const two = (n: number) => String(n).padStart(2, "0");
 
-function item(h: Ranked) {
-	const url = /^https?:\/\//.test(h.url)
+function item(h: Ranked, target: string) {
+	const url = /^https?:\/\//.test(profile(h.url, target))
 		? `<a href="${esc(h.url)}" target="_blank" rel="noopener noreferrer">${esc(h.url)}</a>`
 		: "";
 	const meta = [...h.meta].map(([k, v]) => `<div class="meta"><b>${esc(k)}:</b> ${esc(v)}</div>`).join("");
@@ -41,7 +41,7 @@ function item(h: Ranked) {
 
 function section({ title, kind, checked, hits }: Section) {
 	const body = hits.length
-		? `<ul class="hits">${hits.map(item).join("")}</ul>`
+		? `<ul class="hits">${hits.map((h) => item(h, title)).join("")}</ul>`
 		: `<p class="none">${checked.length ? "nothing found" : "not checked, see the notes up top"}</p>`;
 	return `<section><h2>${esc(title)} <span class="kind">${kind} · ${hits.length}</span></h2>${body}</section>`;
 }
