@@ -20,10 +20,10 @@ test("render escapes and marks unchecked sections", () => {
 	assert.equal(render(evil, sections, [evil], out), 1);
 	const page = readFileSync(out, "utf8");
 	assert.doesNotMatch(page, /<img|javascript:/);
-	assert.match(page, /<p class="none">nothing found<\/p>/);
-	assert.match(page, /not checked/);
+	assert.match(page, /<p class="none">Nothing found<\/p>/);
+	assert.match(page, /Not checked/);
 	assert.doesNotMatch(page, /<ul><\/ul>|<ul class="hits"><p/);
-	assert.match(page, /1 hits · 0 high · 0 medium · 1 low/);
+	assert.match(page, /<b>0<\/b><span>high<\/span>.*<b>1<\/b><span>low<\/span>/);
 });
 
 test("reports are named after the most found username", () => {

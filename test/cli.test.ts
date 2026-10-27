@@ -67,7 +67,7 @@ test("failed tools say not checked and exit nonzero", async () => {
 	assert.equal(statSync(out).mode & 0o777, 0o600);
 	assert.match(page, /maigret isn&#x27;t on PATH/);
 	assert.match(page, /blackbird exited with 1/);
-	assert.match(page, /not checked/);
+	assert.match(page, /Not checked/);
 });
 
 test("the binary exits 0 on help and 2 on bad arguments", () => {

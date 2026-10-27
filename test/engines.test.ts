@@ -7,6 +7,7 @@ import { parseHolehe } from "../src/engines/holehe.ts";
 import { parseMaigret, runMaigret } from "../src/engines/maigret.ts";
 import { run, STOP, which } from "../src/engines/process.ts";
 import { runSherlock } from "../src/engines/sherlock.ts";
+import { fake } from "../src/engines/verifier.ts";
 import { capture, fakeBin, fakeBlackbird, path, tempDir } from "./helpers.ts";
 
 const stamp = () => {
@@ -152,10 +153,12 @@ test("maigret hits that also find a made-up name are dropped", async () => {
 	const [found, notes] = await runMaigret(["eve"], tmp.path, false);
 	assert.deepEqual(
 		found.get("eve")?.map((h) => h.site),
-		["Real"],
+		["Real", "Wobbly"],
 	);
-	assert.match(notes[0], /made-up name: SaysYes/);
-	assert.match(notes[1], /asked again: Erratic, Flaky/);
+	assert.match(notes[0], /^maigret · eve: 1 sites blocked the check .*: Walled$/);
+	assert.equal(notes[1], "maigret · eve: 1 sites didn't answer (timed out or errored, even when asked again): Dead");
+	assert.match(notes[2], /made-up name: SaysYes/);
+	assert.match(notes[3], /asked again: Erratic, Flaky/);
 	assert.match(out.out(), /Real/);
 	assert.doesNotMatch(out.out(), /SaysYes|Flaky|Erratic/);
 });
@@ -167,11 +170,26 @@ test("sherlock hits go through the same check", async () => {
 	const [found, notes] = await runSherlock(["eve"], tmp.path, false);
 	assert.deepEqual(
 		found.get("eve")?.map((h) => [h.site, h.src]),
-		[["Real", "sherlock"]],
+		[
+			["Real", "sherlock"],
+			["Slow", "sherlock"],
+		],
 	);
-	assert.equal(notes[0], "sherlock: left out 1 sites that also 'found' a made-up name: SaysYes");
+	assert.equal(notes[0], "sherlock · eve: 1 sites didn't answer (timed out, bot wall, no connection or hung): Down");
+	assert.equal(notes[1], "sherlock: left out 1 sites that also 'found' a made-up name: SaysYes");
 	assert.match(out.out(), /Real/);
+	assert.match(out.out(), /Slow/);
 	assert.doesNotMatch(out.out(), /SaysYes/);
+});
+
+test("a tool is only stopped once it goes quiet", async () => {
+	const [out, problem] = await run("sh", ["sh", "-c", "for i in $(seq 12); do echo $i; sleep 0.1; done"], { idle: 1 });
+	assert.equal(problem, null);
+	assert.equal(out.split("\n").length, 13);
+	const [quiet, stuck] = await run("sh", ["sh", "-c", "echo hi; exec sleep 5"], { idle: 1 });
+	assert.equal(quiet, "hi\n");
+	assert.match(stuck ?? "", /^sh went quiet for .+, stopped it, some sites weren't checked$/);
+	assert.equal(STOP.isSet(), false);
 });
 
 test("which ignores empty PATH entries and the current directory", () => {
@@ -191,4 +209,39 @@ test("blackbird profile urls keep $ in usernames as is", async () => {
 		["https://github.com/ca$$h", "https://github.com/a$&b"],
 	);
 	assert.match(out.out(), /github\.com\/ca\$\$h/);
+});
+
+test("made-up names keep the handle's shape", () => {
+	const f = fake("Eve_r0se.dev");
+	assert.match(f, /^[A-Z][a-z]{2}_[a-z]\d[a-z]{2}\.[a-z]{3}$/);
+	assert.notEqual(f, "Eve_r0se.dev");
+	assert.match(fake("eve"), /^[a-z]{12}$/);
+	assert.match(fake("________"), /^[a-z]{12}$/);
+});
+
+test("a sherlock run that hangs gets the sites it never reached asked again", async () => {
+	using tmp = tempDir();
+	using _path = path(fakeBin(tmp.path, "sherlock"));
+	using _out = capture();
+	const before = globalThis.fetch;
+	globalThis.fetch = async () => Response.json({ $schema: "x", Before: {}, Hang: {}, After: {} });
+	try {
+		const [, notes] = await runSherlock(["stuck"], tmp.path, false, 1);
+		assert.match(notes[0], /^sherlock went quiet for .+ for stuck$/);
+		assert.match(notes[1], /^sherlock · stuck: 1 sites didn't answer .*: Hang$/);
+	} finally {
+		globalThis.fetch = before;
+	}
+});
+
+test("blackbird reruns while checks fail and lists the sites that failed every time", async () => {
+	using tmp = tempDir();
+	const home = fakeBlackbird(tmp.path);
+	using _out = capture();
+	const [found, notes] = await runBlackbird(["patchy"], [], home, false);
+	assert.deepEqual(
+		found.get("patchy")?.map((h) => h.site),
+		["GitHub (User)"],
+	);
+	assert.deepEqual(notes, ["blackbird: 1 site checks failed every time (timeouts or connection errors): down.example"]);
 });

@@ -4,6 +4,10 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { io, shown } from "../src/output/terminal.ts";
 
+globalThis.fetch = async () => {
+	throw new Error("tests stay offline");
+};
+
 export const FIXTURES = join(import.meta.dirname, "fixtures");
 export const PYTHON = execFileSync("python3", ["-c", "import sys; print(sys.executable)"], { encoding: "utf8" }).trim();
 

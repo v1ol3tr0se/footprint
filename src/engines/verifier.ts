@@ -45,9 +45,22 @@ const GONE = /^\[-\] (.+?): Not found!/gim;
 const BLOCK = /Checking username (.+?) on:(.*?)(?=\[\*\] Checking username |$)/gs;
 const BATCH_MS = 3000;
 const RETRY_MS = 3000;
-const LIMIT_S = 120;
+const IDLE_S = 120;
+const TRIES = 3;
 
-const fake = () => Array.from({ length: 12 }, () => String.fromCharCode(97 + randomInt(26))).join("");
+const pick = (from: string) => from[randomInt(from.length)];
+const LOWER = "abcdefghijklmnopqrstuvwxyz";
+const UPPER = LOWER.toUpperCase();
+
+/** A made-up name with the real one's shape (letters, digits and separators in the same places) so sites with a username format accept it; short names get 12 plain letters instead, a random 3-letter name is probably taken. */
+export function fake(like: string) {
+	if ([...like].length < 8 || !/[a-z0-9]/i.test(like)) return Array.from({ length: 12 }, () => pick(LOWER)).join("");
+	return [...like]
+		.map((c) =>
+			/[a-z]/.test(c) ? pick(LOWER) : /[A-Z]/.test(c) ? pick(UPPER) : /[0-9]/.test(c) ? pick("0123456789") : c,
+		)
+		.join("");
+}
 
 /**
  * Re-asks every site a tool claims, for the real name and two made-up ones, before it's shown.
@@ -56,7 +69,7 @@ const fake = () => Array.from({ length: 12 }, () => String.fromCharCode(97 + ran
  * Bot walls, login redirects and dead forums 'find' anyone; flaky ones fail or change their answer.
  */
 export class Verifier {
-	readonly fakes = [fake(), fake()];
+	private readonly made = new Map<string, string[]>();
 	private readonly queue = new Queue<Claim | null>();
 	private readonly ok = new Map<string, Set<string>>();
 	private readonly seen = new Set<string>();
@@ -94,6 +107,13 @@ export class Verifier {
 			this.finished = this.loop ?? Promise.resolve();
 		}
 		return this.finished;
+	}
+
+	fakes(user: string) {
+		let names = this.made.get(user);
+		while (!names || new Set([user, ...names]).size < 3) names = [fake(user), fake(user)];
+		this.made.set(user, names);
+		return names;
 	}
 
 	has(user: string, site: string) {
@@ -156,32 +176,25 @@ export class Verifier {
 		return batch;
 	}
 
-	private async check(user: string, items: Claim[], retry = true): Promise<void> {
+	private async check(user: string, items: Claim[], tries = TRIES): Promise<void> {
 		this.rounds++;
 		const out = join(this.tmp, `${this.tool}-check${this.rounds}`);
 		mkdirSync(out);
 		const sites = [...new Set(items.map((b) => b[1]))].sort(cmp);
-		const argv = [
-			...this.argv,
-			this.listing,
-			...sites.flatMap((s) => ["--site", s]),
-			"-fo",
-			out,
-			"--",
-			user,
-			...this.fakes,
-		];
-		const [text, problem] = await run(this.tool, argv, { limit: LIMIT_S, cwd: this.tmp });
+		const fakes = this.fakes(user);
+		const argv = [...this.argv, this.listing, ...sites.flatMap((s) => ["--site", s]), "-fo", out, "--", user, ...fakes];
+		const [text, problem] = await run(this.tool, argv, { idle: IDLE_S, cwd: this.tmp });
 		const blocks = new Map([...text.matchAll(BLOCK)].map((m) => [m[1], m[2]]));
-		if (problem || ![user, ...this.fakes].every((n) => blocks.has(n))) {
+		if (problem || ![user, ...fakes].every((n) => blocks.has(n))) {
+			if (tries > 1 && !(await STOP.wait(RETRY_MS))) return this.check(user, items, tries - 1);
 			for (const s of sites) this.unchecked.add(s);
 			return;
 		}
 		const listed = (name: string, re: RegExp) =>
 			new Set([...(blocks.get(name) ?? "").matchAll(re)].map((m) => siteName(m[1], this.names)));
 		const again = listed(user, FOUND);
-		const bad = new Set(this.fakes.flatMap((f) => [...listed(f, FOUND)]));
-		const gone = this.fakes.map((f) => listed(f, GONE));
+		const bad = new Set(fakes.flatMap((f) => [...listed(f, FOUND)]));
+		const gone = fakes.map((f) => listed(f, GONE));
 		const absent = new Set(sites.filter((s) => gone.every((g) => g.has(s))));
 		for (const s of sites) if (bad.has(s)) this.bad.add(s);
 		const unsure = sites.filter((s) => !bad.has(s) && !(again.has(s) && absent.has(s)));
@@ -191,11 +204,11 @@ export class Verifier {
 			this.ok.set(user, ok.add(site));
 			live(user, shown, url);
 		}
-		if (unsure.length && retry && !(await STOP.wait(RETRY_MS))) {
+		if (unsure.length && tries > 1 && !(await STOP.wait(RETRY_MS))) {
 			await this.check(
 				user,
 				items.filter((b) => unsure.includes(b[1])),
-				false,
+				tries - 1,
 			);
 		} else {
 			for (const s of unsure) this.flaky.add(s);

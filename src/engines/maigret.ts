@@ -1,10 +1,11 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { hit } from "../core/hit.ts";
 import { flat, parseJson } from "../core/pyvalue.ts";
+import { alnum, cmp } from "../core/text.ts";
 import type { Found, Hit } from "../core/types.ts";
 import type { Engine, Outcome } from "./index.ts";
-import { isFile, run, which } from "./process.ts";
+import { isFile, run, STOP, which } from "./process.ts";
 import { siteName, Verifier } from "./verifier.ts";
 
 type Report = Record<
@@ -19,8 +20,6 @@ type Report = Record<
 const DATABASE = /^\[\+\] Using sites database: (.+) \(\d+ sites\)/;
 const CHECKING = /^\[\*\] Checking username (.+) on:/;
 const CLAIMED = /^\[\+\] (.+?): (https?:\/\/\S+)/;
-const BLOCK = /Checking username (.+?) on:(.*?)(?=Checking username |$)/gs;
-const ERRORS = /Too many errors of type "(.+?)" \(([\d.]+)%\)/g;
 
 export function parseMaigret(path: string): Hit[] {
 	const hits: Hit[] = [];
@@ -46,11 +45,47 @@ function readSiteNames(path: string, into: Set<string>) {
 	}
 }
 
+const ERRORED = /^\[\?\] (.+?): (?!https?:\/\/)(.*)$/;
+const ROUNDS = 3;
+const TEMPORARY = new Set([
+	"Rate limited",
+	"Request timeout",
+	"Unknown",
+	"Request failed",
+	"Connecting failure",
+	"Connecting failure (DNS)",
+	"Webgate unavailable",
+	"HTTP",
+	"Proxy",
+	"Interrupted",
+	"Connection lost",
+	"Payload",
+	"None",
+]);
+
+/**
+ * maigret retries failed requests itself (--retries) and prints every site that still errored (--print-errors).
+ * Temporary errors (maigret's own list) get asked again by name with a longer timeout, up to three rounds while each
+ * one still gets answers; captchas, bot walls and logins won't change on a retry, they're listed apart.
+ */
 export async function runMaigret(users: string[], tmp: string, noNsfw: boolean): Promise<Outcome> {
-	const argv = ["maigret", "--no-recursion", "-J", "simple", "--no-color", "--no-progressbar", "--timeout", "20"];
-	if (noNsfw) argv.push("--exclude-tags", "porn,erotic,webcam");
+	const argv = (timeout: number) => [
+		"maigret",
+		"--no-recursion",
+		"-J",
+		"simple",
+		"--no-color",
+		"--no-progressbar",
+		"--retries",
+		"2",
+		"--timeout",
+		String(timeout),
+		...(noNsfw ? ["--exclude-tags", "porn,erotic,webcam"] : []),
+	];
 	const names = new Set<string>();
-	const check = new Verifier("maigret", argv, "--print-not-found", tmp, names);
+	const check = new Verifier("maigret", argv(60), "--print-not-found", tmp, names);
+	const errored = new Map<string, Set<string>>();
+	const blocked = new Map<string, Set<string>>();
 	let cur: string | undefined;
 
 	const onLine = (ln: string) => {
@@ -59,35 +94,88 @@ export async function runMaigret(users: string[], tmp: string, noNsfw: boolean):
 		const checking = CHECKING.exec(ln);
 		if (checking) {
 			cur = checking[1];
+			errored.set(cur, new Set());
 			return;
 		}
-		const claimed = cur && CLAIMED.exec(ln);
-		if (cur && claimed) check.claim(cur, siteName(claimed[1], names), claimed[1], claimed[2]);
+		if (!cur) return;
+		const claimed = CLAIMED.exec(ln);
+		if (claimed) {
+			errored.get(cur)?.delete(siteName(claimed[1], names));
+			check.claim(cur, siteName(claimed[1], names), claimed[1], claimed[2]);
+		}
+		const failed = ERRORED.exec(ln);
+		if (!failed || failed[2].startsWith("Unsupported username format")) return;
+		const site = siteName(failed[1], names);
+		if (TEMPORARY.has(failed[2].replace(/ error(: .*)?$/, ""))) return void errored.get(cur)?.add(site);
+		blocked.set(cur, (blocked.get(cur) ?? new Set()).add(site));
 	};
 
 	check.start();
 	try {
-		return await scan(users, tmp, argv, onLine, check);
+		return await scan(users, tmp, argv, onLine, check, errored, blocked);
 	} finally {
 		await check.finish();
 	}
 }
 
-async function scan(users: string[], tmp: string, argv: string[], onLine: (ln: string) => void, check: Verifier) {
-	const [out, problem] = await run("maigret", [...argv, "-a", "-fo", tmp, "--", ...users], { onLine, cwd: tmp });
+async function scan(
+	users: string[],
+	tmp: string,
+	argv: (timeout: number) => string[],
+	onLine: (ln: string) => void,
+	check: Verifier,
+	errored: Map<string, Set<string>>,
+	blocked: Map<string, Set<string>>,
+) {
+	const [, problem] = await run("maigret", [...argv(20), "--print-errors", "-a", "-fo", tmp, "--", ...users], {
+		onLine,
+		cwd: tmp,
+	});
 	const notes = problem ? [problem] : [];
-	for (const [, u, block] of out.matchAll(BLOCK)) {
-		for (const [, err, pct] of block.matchAll(ERRORS)) {
-			if (err !== "Unsupported username format") {
-				notes.push(`maigret · ${u}: ${pct}% of sites failed (${err.toLowerCase()})`);
-			}
-		}
-	}
 	const found: Found = new Map();
+	const add = (u: string, f: string) => {
+		const have = found.get(u) ?? [];
+		const sites = new Set(have.map((h) => h.site));
+		found.set(u, [...have, ...parseMaigret(f).filter((h) => !sites.has(h.site))]);
+	};
 	for (const u of users) {
 		const f = join(tmp, `report_${u.replaceAll("/", "_")}_simple.json`);
-		if (isFile(f)) found.set(u, parseMaigret(f));
+		if (isFile(f)) add(u, f);
 		else if (!problem) notes.push(`maigret skipped ${u}${u.includes("#") ? ", it can't search names with #" : ""}`);
+	}
+	for (let round = 1, progress = true; round <= ROUNDS && progress && !STOP.isSet(); round++) {
+		progress = false;
+		for (const u of found.keys()) {
+			const sites = [...(errored.get(u) ?? [])];
+			if (!sites.length || STOP.isSet()) continue;
+			const dir = join(tmp, `maigret-retry${round}-${alnum(u)}`);
+			mkdirSync(dir, { recursive: true });
+			const asked = sites.flatMap((s) => ["--site", s]);
+			const [, again] = await run("maigret", [...argv(60), "--print-errors", "-a", ...asked, "-fo", dir, "--", u], {
+				onLine,
+				cwd: dir,
+			});
+			if (again) {
+				notes.push(again);
+				errored.set(u, new Set(sites));
+				continue;
+			}
+			const f = join(dir, `report_${u.replaceAll("/", "_")}_simple.json`);
+			if (isFile(f)) add(u, f);
+			progress ||= (errored.get(u)?.size ?? 0) < sites.length;
+		}
+	}
+	for (const [u, sites] of blocked) {
+		notes.push(
+			`maigret · ${u}: ${sites.size} sites blocked the check (captcha, bot wall, login or access denied; another IP or no VPN may get through): ${[...sites].sort(cmp).join(", ")}`,
+		);
+	}
+	for (const [u, sites] of errored) {
+		if (sites.size) {
+			notes.push(
+				`maigret · ${u}: ${sites.size} sites didn't answer (timed out or errored, even when asked again): ${[...sites].sort(cmp).join(", ")}`,
+			);
+		}
 	}
 	for (const [u, hits] of found) {
 		for (const h of hits) if (!check.has(u, h.site)) check.claim(u, h.site, h.site, h.url);
