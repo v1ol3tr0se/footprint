@@ -67,6 +67,7 @@ test("failed tools say not checked and exit nonzero", async () => {
 	assert.equal(code, 1);
 	assert.equal(statSync(out).mode & 0o777, 0o600);
 	assert.match(page, /maigret isn&#x27;t on PATH/);
+	assert.match(page, /sherlock isn&#x27;t on PATH/);
 	assert.match(page, /blackbird exited with 1/);
 	assert.match(page, /Not checked/);
 });

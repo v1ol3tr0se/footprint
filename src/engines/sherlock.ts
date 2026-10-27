@@ -137,7 +137,8 @@ export const sherlock: Engine = {
 	name: "sherlock",
 	covers: ["username"],
 	plan: ({ users, tmp, noNsfw }) => {
-		if (!users.length || !which("sherlock")) return {};
+		if (!users.length) return {};
+		if (!which("sherlock")) return { note: "sherlock isn't on PATH, skipped" };
 		return { run: () => runSherlock(users, tmp, noNsfw) };
 	},
 };
