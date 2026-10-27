@@ -46,8 +46,8 @@ export function which(cmd: string) {
 	});
 }
 
-export type Result = [out: string, problem: string | null];
-export type RunOptions = { onLine?: (line: string) => void; idle?: number; limit?: number; cwd?: string };
+type Result = [out: string, problem: string | null];
+type RunOptions = { onLine?: (line: string) => void; idle?: number; limit?: number; cwd?: string };
 type End = { code: number } | { error: Error };
 
 /** Run one tool, handing each stdout line to onLine as it arrives; resolves to [stdout, problem or null]. It's only killed after `idle` seconds with no output or `limit` seconds in all, or a few seconds after the run is stopped if it hasn't quit on its own by then. */

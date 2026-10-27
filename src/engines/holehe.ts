@@ -48,7 +48,7 @@ export function parseHolehe(text: string): [Hit[], string[]] {
 	return [hits, unchecked];
 }
 
-export async function runHolehe(emails: string[]): Promise<Outcome> {
+async function runHolehe(emails: string[]): Promise<Outcome> {
 	const found: Found = new Map();
 	const notes: string[] = [];
 	for (const e of emails) {

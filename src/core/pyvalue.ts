@@ -5,7 +5,7 @@ const NUMBER = /^[-+]?(\d+\.\d*|\.\d+|\d+)([eE][-+]?\d+)?/;
 const SPECIAL = /(?<=(?:^|[:,[])\s*)(NaN|-?Infinity)(?=\s*(?:[,\]}]|$))/g;
 
 /** A number python would print as a float, so 5.0 stays "5.0" instead of becoming "5". */
-export class PyFloat {
+class PyFloat {
 	readonly value: number;
 
 	constructor(value: number) {

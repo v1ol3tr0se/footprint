@@ -59,7 +59,7 @@ const LEGEND: Record<Level, string> = {
 
 const ENTITIES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#x27;" };
 
-export const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ENTITIES[c]);
+const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ENTITIES[c]);
 
 const two = (n: number) => String(n).padStart(2, "0");
 

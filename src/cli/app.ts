@@ -15,7 +15,7 @@ import type { Ask } from "./prompt.ts";
 const QUIET =
 	/rate-limited or errored|sites didn't answer|sites blocked the check|domain doesn't exist|made-up name|changed their answer|couldn't double-check/;
 
-export const REPORTS = join(import.meta.dirname, "../..", "reports");
+const REPORTS = join(import.meta.dirname, "../..", "reports");
 
 function claimDir(dir: string) {
 	try {

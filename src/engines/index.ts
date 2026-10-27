@@ -6,7 +6,7 @@ import { sherlock } from "./sherlock.ts";
 
 export type Scan = { users: string[]; emails: string[]; noNsfw: boolean; blackbirdHome: string; tmp: string };
 export type Outcome = [found: Found, notes: string[]];
-export type Plan = { run?: () => Promise<Outcome>; note?: string };
+type Plan = { run?: () => Promise<Outcome>; note?: string };
 
 export type Engine = {
 	name: string;

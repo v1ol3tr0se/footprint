@@ -5,7 +5,11 @@ import { cmp } from "../core/text.ts";
 import { live } from "../output/terminal.ts";
 import { run, STOP } from "./process.ts";
 
-export type Claim = [user: string, site: string, shown: string, url: string];
+type Claim = [user: string, site: string, shown: string, url: string];
+
+/** maigret and sherlock print the same two lines: the name a run moved on to, and a site that claims it. */
+export const CHECKING = /^\[\*\] Checking username (.+) on:/;
+export const CLAIMED = /^\[\+\] (.+?): (https?:\/\/\S+)/;
 
 /** maigret prints mirrors as 'GitHubGist [GitHub]' but some real names have brackets too, like 'OP.GG [PUBG]'. */
 export const siteName = (shown: string, names: Set<string>) =>

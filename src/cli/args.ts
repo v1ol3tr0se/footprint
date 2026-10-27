@@ -26,7 +26,7 @@ export type Args = {
 const USAGE =
 	"usage: footprint [-u USER ...] [-e EMAIL ...] [-n NAME] [--html [PATH]] [--blackbird-home DIR] [--no-nsfw] [-i]";
 
-export const HELP = `${USAGE}
+const HELP = `${USAGE}
 
 aggregate osint tools into one self-audit report
 
@@ -40,7 +40,7 @@ aggregate osint tools into one self-audit report
   -h, --help              show this and quit
 `;
 
-export const expand = (p: string) => (p === "~" || p.startsWith("~/") ? join(homedir(), p.slice(1)) : p);
+const expand = (p: string) => (p === "~" || p.startsWith("~/") ? join(homedir(), p.slice(1)) : p);
 
 const fail = (msg: string): never => {
 	throw new Exit(2, `${USAGE}\nfootprint: error: ${msg}`);

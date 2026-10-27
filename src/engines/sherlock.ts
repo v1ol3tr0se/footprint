@@ -4,10 +4,8 @@ import { hit } from "../core/hit.ts";
 import type { Found } from "../core/types.ts";
 import type { Engine, Outcome } from "./index.ts";
 import { run, STOP, which } from "./process.ts";
-import { Verifier } from "./verifier.ts";
+import { CHECKING, CLAIMED, Verifier } from "./verifier.ts";
 
-const CHECKING = /^\[\*\] Checking username (.+) on:/;
-const CLAIMED = /^\[\+\] (.+?): (https?:\/\/\S+)/;
 const MISSED = /^\[-\] (.+?): (.*?) ?$/;
 const ANSWERS = new Set(["Not Found!", "Illegal Username Format For This Site!"]);
 const IDLE_S = 300;

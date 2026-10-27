@@ -8,8 +8,8 @@ globalThis.fetch = async () => {
 	throw new Error("tests stay offline");
 };
 
-export const FIXTURES = join(import.meta.dirname, "fixtures");
-export const PYTHON = execFileSync("python3", ["-c", "import sys; print(sys.executable)"], { encoding: "utf8" }).trim();
+const FIXTURES = join(import.meta.dirname, "fixtures");
+const PYTHON = execFileSync("python3", ["-c", "import sys; print(sys.executable)"], { encoding: "utf8" }).trim();
 
 export function tempDir() {
 	const path = mkdtempSync(join(tmpdir(), "footprint-test-"));

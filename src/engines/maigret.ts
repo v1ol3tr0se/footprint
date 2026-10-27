@@ -7,7 +7,7 @@ import { alnum, cmp } from "../core/text.ts";
 import type { Found, Hit } from "../core/types.ts";
 import type { Engine, Outcome } from "./index.ts";
 import { isFile, run, STOP, which } from "./process.ts";
-import { siteName, Verifier } from "./verifier.ts";
+import { CHECKING, CLAIMED, siteName, Verifier } from "./verifier.ts";
 
 type Report = Record<
 	string,
@@ -19,8 +19,6 @@ type Report = Record<
 >;
 
 const DATABASE = /^\[\+\] Using sites database: (.+) \(\d+ sites\)/;
-const CHECKING = /^\[\*\] Checking username (.+) on:/;
-const CLAIMED = /^\[\+\] (.+?): (https?:\/\/\S+)/;
 
 export function parseMaigret(path: string): Hit[] {
 	const hits: Hit[] = [];
