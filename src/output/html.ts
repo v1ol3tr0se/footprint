@@ -1,5 +1,5 @@
 import { writeFileSync } from "node:fs";
-import { intel } from "../core/intel.ts";
+import { mentions } from "../core/intel.ts";
 import { LEVELS, RANK } from "../core/risk.ts";
 import { alnum, cut, profile } from "../core/text.ts";
 import type { Level, Ranked, Section } from "../core/types.ts";
@@ -19,7 +19,7 @@ svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke
 .ident dt{color:var(--mut);font-size:.8rem}.ident dd{margin:0;overflow-wrap:anywhere;color:var(--sub)}.ident dd span{display:inline-block;max-width:100%;vertical-align:top}
 h1{margin:0;font-size:1.45rem;line-height:1.3;color:var(--fg);text-wrap:balance}
 .stats{flex:1 1 460px;display:grid;gap:8px}
-.total{margin:0 2px;color:var(--mut);font-size:.82rem;font-variant-numeric:tabular-nums}.total b{color:var(--fg)}
+.total{margin:0 2px;text-align:center;color:var(--mut);font-size:.82rem;font-variant-numeric:tabular-nums}.total b{color:var(--fg)}
 .counts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .count{display:flex;align-items:center;gap:12px;min-width:0;background:var(--raise);border-radius:14px;padding:10px 12px}
 .count b{display:block;font-size:1.25rem;line-height:1.15;font-variant-numeric:tabular-nums}.count div span{display:block;color:var(--mut);font-size:.74rem}
@@ -94,13 +94,25 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ENTITIES[c]);
 
 const MAX_STAGGER = 10;
 
+const anchor = (url: string) => `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(url)}</a>`;
+
+/** Escaped text with every http(s) url in it turned into a link, trailing punctuation left outside. */
+function linkify(text: string) {
+	let out = "";
+	let last = 0;
+	for (const m of text.matchAll(/https?:\/\/[^\s<>"'`]+/g)) {
+		const url = m[0].replace(/[.,;:!?)\]}]+$/, "");
+		out += esc(text.slice(last, m.index)) + anchor(url);
+		last = m.index + url.length;
+	}
+	return out + esc(text.slice(last));
+}
+
 function item(h: Ranked, { title, kind }: Section, i: number) {
 	const link = kind === "email" ? h.url : profile(h.url, title);
-	const url = /^https?:\/\//.test(link)
-		? `<a href="${esc(link)}" target="_blank" rel="noopener noreferrer">${esc(link)}</a>`
-		: "";
+	const url = /^https?:\/\//.test(link) ? anchor(link) : "";
 	const meta = h.meta.size
-		? `<dl class="meta">${[...h.meta].map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`
+		? `<dl class="meta">${[...h.meta].map(([k, v]) => `<dt>${esc(k)}</dt><dd>${linkify(v)}</dd>`).join("")}</dl>`
 		: "";
 	return (
 		`<li class="${h.level}" style="--i:${i}">${chip(h.level)}<div class="body"><div class="top"><h3>${esc(h.site)}</h3>` +
@@ -142,16 +154,26 @@ export function reportName(sections: Section[]) {
 	return top?.[0] ?? sections[0]?.title.split("@")[0] ?? "footprint";
 }
 
-const unique = (xs: string[]) => xs.filter((x, i) => xs.findIndex((y) => y.toLowerCase() === x.toLowerCase()) === i);
+/** Each value once, the most mentioned first, ties in the order they first showed up. */
+function byCount(xs: [value: string, weight: number][]) {
+	const counts = new Map<string, [value: string, n: number]>();
+	for (const [x, w] of xs) {
+		const seen = counts.get(x.toLowerCase());
+		counts.set(x.toLowerCase(), [seen?.[0] ?? x, (seen?.[1] ?? 0) + w]);
+	}
+	return [...counts.values()].sort((a, b) => b[1] - a[1]).map(([x]) => x);
+}
 
-/** Who the report is about: the names the hits show, then the usernames, then the emails, targets first. */
+/** Who the report is about: the names the hits show, then the usernames, then the emails, each sorted by how often it shows up. */
 export function identity(sections: Section[]): [label: string, values: string[]][] {
-	const found = (label: string) => sections.flatMap((s) => intel(s.hits, s.title)[label] ?? []);
-	const titles = (kind: string) => sections.filter((s) => s.kind === kind).map((s) => s.title);
+	const found = (label: string) =>
+		sections.flatMap((s) => mentions(s.hits, s.title, label)).map((v): [string, number] => [v, 1]);
+	const titles = (kind: string) =>
+		sections.filter((s) => s.kind === kind).map((s): [string, number] => [s.title, Math.max(1, s.hits.length)]);
 	const rows: [string, string[]][] = [
-		["names", unique(found("names"))],
-		["usernames", unique([...titles("username"), ...handles(sections)])],
-		["emails", unique([...titles("email"), ...found("emails").filter((e) => !e.includes("*"))])],
+		["names", byCount(found("names"))],
+		["usernames", byCount([...titles("username"), ...handles(sections).map((h): [string, number] => [h, 1])])],
+		["emails", byCount([...titles("email"), ...found("emails").filter(([e]) => !e.includes("*"))])],
 	];
 	return rows.filter(([, values]) => values.length);
 }

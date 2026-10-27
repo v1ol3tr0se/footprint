@@ -70,6 +70,39 @@ test("the header lists names, then usernames, then emails, and email hits link t
 	assert.doesNotMatch(page, /id="photos"/);
 });
 
+test("identity puts the names, usernames and emails that show up most first", () => {
+	const ranked = (...hits: Parameters<typeof hit>[]) => merge([hits.map((h) => hit(...h))]);
+	const sections = [
+		{
+			title: "rose",
+			kind: "username" as const,
+			checked: ["maigret"],
+			hits: ranked(
+				["A", "https://a.example/rose", "maigret", { fullname: "Robin R" }],
+				["B", "https://b.example/rose", "maigret", { fullname: "Robin", github_username: "rr" }],
+				["C", "https://c.example/rose", "maigret", { name: "robin", twitter_username: "rr" }],
+			),
+		},
+		{
+			title: "r@x.com",
+			kind: "email" as const,
+			checked: ["holehe"],
+			hits: ranked(["spotify", "https://spotify.com", "holehe", { email: "other@x.com" }]),
+		},
+		{
+			title: "robin_b",
+			kind: "username" as const,
+			checked: ["maigret"],
+			hits: ranked(["D", "https://d.example/robin_b", "maigret", {}]),
+		},
+	];
+	assert.deepEqual(identity(sections), [
+		["names", ["Robin", "Robin R"]],
+		["usernames", ["rose", "rr", "robin_b"]],
+		["emails", ["r@x.com", "other@x.com"]],
+	]);
+});
+
 test("photos fetches each image once, one per hit showing it, highest risk first, and drops what isn't a small image", async () => {
 	const img = (meta: Record<string, string>, tags: string[] = []) => hit("s", "", "maigret", meta, tags);
 	const sections = [
@@ -173,4 +206,32 @@ test("reports are named after the most found username", () => {
 	assert.equal(fileName("eve"), "eve.html");
 	assert.equal(fileName("../../etc/passwd"), "_.._etc_passwd.html");
 	assert.equal(fileName("..."), "footprint.html");
+});
+
+test("every url in a hit's details is a link, and nothing else is", () => {
+	using tmp = tempDir();
+	const out = join(tmp.path, "r.html");
+	const sections = [
+		{
+			title: "rose",
+			kind: "username" as const,
+			checked: ["maigret"],
+			hits: merge([
+				[
+					hit("GitHub", "https://github.com/rose", "maigret", {
+						image: "https://avatars.example/u/1?v=4",
+						bio: "trains (see https://rose.example/blog). javascript:alert(1)",
+					}),
+				],
+			]),
+		},
+	];
+	render("rose", sections, out);
+	const page = readFileSync(out, "utf8");
+	assert.match(page, /<dd><a href="https:\/\/avatars\.example\/u\/1\?v=4" target="_blank" rel="noopener noreferrer">/);
+	assert.match(
+		page,
+		/\(see <a href="https:\/\/rose\.example\/blog"[^>]*>https:\/\/rose\.example\/blog<\/a>\)\. javascript:alert\(1\)/,
+	);
+	assert.doesNotMatch(page, /href="javascript/);
 });
