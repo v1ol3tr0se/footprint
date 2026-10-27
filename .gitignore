@@ -2,3 +2,14 @@ node_modules/
 dist/
 reports/
 *.html
+
+*.log
+.env*
+*.bak*
+*.orig
+*.rej
+*~
+*.swp
+.directory
+package-lock.json
+pnpm-lock.yaml
