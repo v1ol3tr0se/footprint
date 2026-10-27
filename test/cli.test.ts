@@ -50,6 +50,18 @@ test("interactive asks for what is missing", async () => {
 	assert.equal(a.htmlPath, null);
 });
 
+test("a yes or no typed where the path goes keeps the default reports folder", async () => {
+	for (const answer of ["y", "Yes", "s", "sí", "n"]) {
+		const answers = ["eve", "", "y", answer];
+		using _out = capture();
+		const a = await parseArgs(["-i"], async () => answers.shift() ?? "");
+		assert.equal(a.htmlPath, null, answer);
+	}
+	const answers = ["eve", "", "y", "out/me.html"];
+	using _out = capture();
+	assert.equal((await parseArgs(["-i"], async () => answers.shift() ?? "")).htmlPath, "out/me.html");
+});
+
 test("unwritable output fails before scanning", async () => {
 	using tmp = tempDir();
 	using _out = capture();

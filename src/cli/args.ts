@@ -134,7 +134,8 @@ async function interview(a: Args, ask: Ask) {
 	a.email.push(...words(await ask("emails")));
 	if (!a.html && /^[ys]/.test((await ask("html report? y/N")).toLowerCase())) {
 		a.html = true;
-		a.htmlPath = (await ask("save it as (enter for reports/)")) || null;
+		const where = await ask("save it as (enter for reports/)");
+		a.htmlPath = /^(y|yes|s|si|sí|n|no)?$/i.test(where) ? null : where;
 	}
 	doneAsking();
 	show("");
